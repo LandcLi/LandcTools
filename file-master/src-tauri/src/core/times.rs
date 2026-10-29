@@ -2,7 +2,9 @@
 //!
 //! 关键点：Rust `std` 只能设置访问/修改时间（`filetime` crate 也是），
 //! **创建时间必须走 Win32 `SetFileTime`**，否则「批量修改文件创建时间」这个卖点做不出来。
-//! 所以这里用 `windows-sys` 裸签名的 `CreateFileW` + `GetFileTime` + `SetFileTime`。
+//!
+//! 这里直接声明 kernel32 的 `extern "system"` 函数，不依赖 `windows`/`windows-sys`：
+//! 这些 API 签名二十年没变过，裸声明比引入一个每次升级都会改类型别名的 crate 更稳。
 
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -22,23 +24,61 @@ mod imp {
     use super::*;
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, INVALID_HANDLE_VALUE};
-    use windows_sys::Win32::Storage::FileSystem::{
-        CreateFileW, GetFileTime, SetFileTime, FILE_SHARE_DELETE, FILE_SHARE_READ,
-        FILE_SHARE_WRITE, OPEN_EXISTING,
-    };
 
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    pub struct FILETIME {
+        pub dw_low_date_time: u32,
+        pub dw_high_date_time: u32,
+    }
+
+    // 文件访问权限
     const FILE_READ_ATTRIBUTES: u32 = 0x0080;
     const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+    // 共享模式：全放开，避免被其他程序占用时打不开
+    const SHARE_ALL: u32 = 0x0000_0007;
+    // 打开已存在文件
+    const OPEN_EXISTING: u32 = 3;
+    // 目录也能打开（BACKUP_SEMANTICS）
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
-    /// 1601-01-01 到 1970-01-01 的 100ns 间隔
+    const INVALID_HANDLE_VALUE: isize = -1;
+    /// 1601-01-01 到 1970-01-01 之间的 100ns 数
     const EPOCH_DIFF: i128 = 116_444_736_000_000_000;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateFileW(
+            file_name: *const u16,
+            desired_access: u32,
+            share_mode: u32,
+            security_attributes: *const core::ffi::c_void,
+            creation_disposition: u32,
+            flags_and_attributes: u32,
+            template_file: isize,
+        ) -> isize;
+
+        fn GetFileTime(
+            file: isize,
+            creation_time: *mut FILETIME,
+            last_access_time: *mut FILETIME,
+            last_write_time: *mut FILETIME,
+        ) -> i32;
+
+        fn SetFileTime(
+            file: isize,
+            creation_time: *const FILETIME,
+            last_access_time: *const FILETIME,
+            last_write_time: *const FILETIME,
+        ) -> i32;
+
+        fn CloseHandle(object: isize) -> i32;
+    }
 
     fn wide(p: &Path) -> Vec<u16> {
         OsStr::new(p).encode_wide().chain(std::iter::once(0)).collect()
     }
 
-    struct Handle(HANDLE);
+    struct Handle(isize);
     impl Drop for Handle {
         fn drop(&mut self) {
             unsafe {
@@ -54,7 +94,7 @@ mod imp {
             CreateFileW(
                 w.as_ptr(),
                 FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES,
-                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                SHARE_ALL,
                 std::ptr::null(),
                 OPEN_EXISTING,
                 FILE_FLAG_BACKUP_SEMANTICS,
@@ -74,7 +114,7 @@ mod imp {
     }
 
     fn ft_to_ms(ft: FILETIME) -> i64 {
-        let t = ((ft.dwHighDateTime as u64) << 32) | ft.dwLowDateTime as u64;
+        let t = ((ft.dw_high_date_time as u64) << 32) | ft.dw_low_date_time as u64;
         ((t as i128 - EPOCH_DIFF) / 10_000) as i64
     }
 
@@ -82,27 +122,16 @@ mod imp {
         let ticks = (ms as i128) * 10_000 + EPOCH_DIFF;
         let t = if ticks < 0 { 0u64 } else { ticks as u64 };
         FILETIME {
-            dwLowDateTime: (t & 0xFFFF_FFFF) as u32,
-            dwHighDateTime: (t >> 32) as u32,
+            dw_low_date_time: (t & 0xFFFF_FFFF) as u32,
+            dw_high_date_time: (t >> 32) as u32,
         }
     }
 
     pub fn read_times(path: &Path) -> AppResult<TimeSpec> {
         let h = open_attr(path)?;
-        let (mut c, mut a, mut w) = (
-            FILETIME {
-                dwLowDateTime: 0,
-                dwHighDateTime: 0,
-            },
-            FILETIME {
-                dwLowDateTime: 0,
-                dwHighDateTime: 0,
-            },
-            FILETIME {
-                dwLowDateTime: 0,
-                dwHighDateTime: 0,
-            },
-        );
+        let mut c = FILETIME::default();
+        let mut a = FILETIME::default();
+        let mut w = FILETIME::default();
         let ok = unsafe { GetFileTime(h.0, &mut c, &mut a, &mut w) };
         if ok == 0 {
             return Err(AppError::Io(format!(
@@ -165,15 +194,12 @@ mod imp {
 
     pub fn write_times(path: &Path, spec: &TimeSpec) -> AppResult<TimeSpec> {
         let before = read_times(path)?;
-        let ft = filetime::FileTime::now();
-        let _ = ft;
+        let to_ft = |ms: i64| filetime::FileTime::from_unix_time(ms / 1000, ((ms % 1000) * 1_000_000) as u32);
         if let Some(ms) = spec.modified_ms {
-            let t = filetime::FileTime::from_unix_time(ms / 1000, ((ms % 1000) * 1_000_000) as u32);
-            filetime::set_file_mtime(path, t)?;
+            filetime::set_file_mtime(path, to_ft(ms))?;
         }
         if let Some(ms) = spec.accessed_ms {
-            let t = filetime::FileTime::from_unix_time(ms / 1000, ((ms % 1000) * 1_000_000) as u32);
-            filetime::set_file_atime(path, t)?;
+            filetime::set_file_atime(path, to_ft(ms))?;
         }
         Ok(before)
     }

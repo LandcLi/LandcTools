@@ -37,12 +37,8 @@ thiserror = "1"
 # quick-xml = "0.37"      # docProps/core.xml 读写
 # kamadak-exif = "0.6"    # 图片 EXIF
 
-[target.'cfg(windows)'.dependencies]
-# 用 windows-sys 而不是 windows：前者是裸 C 签名，跨版本不会因类型别名变化编译失败
-windows-sys = { version = "0.59", features = [
-    "Win32_Foundation",
-    "Win32_Storage_FileSystem",
-] }
+# Windows API 直接在 times.rs / attrs.rs 里声明 kernel32 的 extern "system"，
+# 不引入 windows / windows-sys —— 后者每次大版本都会改参数类型别名，容易编译翻车。
 
 [profile.release]
 opt-level = "s"

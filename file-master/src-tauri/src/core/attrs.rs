@@ -1,5 +1,7 @@
 //! Windows 文件属性（只读 / 隐藏 / 系统 / 归档）读写。
 //! `Option<bool>` 语义：`None` = 不改动，`Some(x)` = 设为 x。
+//!
+//! 同样直接声明 kernel32，理由见 `times.rs`。
 
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -43,9 +45,12 @@ mod imp {
     use super::*;
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        GetFileAttributesW, SetFileAttributesW,
-    };
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetFileAttributesW(file_name: *const u16) -> u32;
+        fn SetFileAttributesW(file_name: *const u16, file_attributes: u32) -> i32;
+    }
 
     fn wide(p: &Path) -> Vec<u16> {
         OsStr::new(p).encode_wide().chain(std::iter::once(0)).collect()
@@ -122,7 +127,13 @@ pub fn write_attrs(path: &Path, spec: &AttrSpec) -> AppResult<AttrFlags> {
     }
 
     let mut flags = before_flags;
-    let mut apply = |mask: u32, want: Option<bool>| {
+    let pairs = [
+        (ATTR_READONLY, spec.readonly),
+        (ATTR_HIDDEN, spec.hidden),
+        (ATTR_SYSTEM, spec.system),
+        (ATTR_ARCHIVE, spec.archive),
+    ];
+    for (mask, want) in pairs {
         if let Some(v) = want {
             if v {
                 flags |= mask;
@@ -130,11 +141,7 @@ pub fn write_attrs(path: &Path, spec: &AttrSpec) -> AppResult<AttrFlags> {
                 flags &= !mask;
             }
         }
-    };
-    apply(ATTR_READONLY, spec.readonly);
-    apply(ATTR_HIDDEN, spec.hidden);
-    apply(ATTR_SYSTEM, spec.system);
-    apply(ATTR_ARCHIVE, spec.archive);
+    }
 
     if flags != before_flags {
         imp::write_flags(path, flags)?;

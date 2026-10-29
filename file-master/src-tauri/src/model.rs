@@ -118,7 +118,7 @@ pub fn kind_of(ext: &str, is_dir: bool) -> String {
         "zip" | "rar" | "7z" | "tar" | "gz" | "xz" | "bz2" => "archive",
         "exe" | "msi" | "dll" | "bat" | "cmd" | "ps1" => "exec",
         "txt" | "md" | "log" | "json" | "xml" | "yaml" | "yml" | "ini" | "html" | "css"
-        | "js" | "ts" | "py" | "go" | "rs" | "java" | "c" | "cpp" | "h" => "text",
+        | "js" | "py" | "go" | "rs" | "java" | "c" | "cpp" | "h" => "text",
         _ => "other",
     }
     .into()

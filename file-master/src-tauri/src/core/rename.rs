@@ -12,7 +12,7 @@
 //! 给一个确定的行为反而不会有惊吓。
 
 use crate::core::conflicts::{self, Level};
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::model::FileEntry;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -463,12 +463,12 @@ pub fn build_plan(entries: &[FileEntry], rules: &RenameRules) -> AppResult<Renam
     for (_, idxs) in groups.iter() {
         if idxs.len() > 1 {
             for &i in idxs {
+                let n = idxs.len();
+                let new_name = items[i].new_name.clone();
                 items[i].level = Level::Error;
-                items[i].issues.push(format!(
-                    "批次内有 {} 个文件会变成同一个名字 `{}`",
-                    idxs.len(),
-                    items[i].new_name
-                ));
+                items[i]
+                    .issues
+                    .push(format!("批次内有 {n} 个文件会变成同一个名字 `{new_name}`"));
             }
         }
     }

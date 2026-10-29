@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, reactive, ref, shallowRef } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
-import { api, errText, onProgress, onTaskDone } from '@/api'
+import { api, errText, isMock, onProgress, onTaskDone } from '@/api'
 import { emptyRules } from '@/api/types'
 import type {
   AttrSpec,
@@ -119,19 +119,29 @@ export const useAppStore = defineStore('app', () => {
   async function ensureListeners() {
     if (listenersReady) return
     listenersReady = true
-    await onProgress((p) => {
-      phase.value = p.phase
-      progress.done = p.done
-      progress.total = p.total
-      progress.current = p.current
-    })
-    await onTaskDone(() => {
-      /* 报告由调用方处理 */
-    })
+    if (isMock) return
+    try {
+      await onProgress((p) => {
+        phase.value = p.phase
+        progress.done = p.done
+        progress.total = p.total
+        progress.current = p.current
+      })
+      await onTaskDone(() => {
+        /* 报告由调用方处理 */
+      })
+    } catch {
+      /* 非 Tauri 环境（浏览器预览）忽略 */
+    }
   }
 
   // ---------- 扫描 ----------
   async function pickDirs() {
+    // 演示模式没有系统对话框，直接载入示例数据
+    if (isMock) {
+      await scan({ dirs: ['demo'] })
+      return
+    }
     const picked = await open({ directory: true, multiple: true, title: '选择文件夹' })
     if (!picked) return
     const dirs = Array.isArray(picked) ? picked : [picked]
@@ -302,10 +312,14 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  /** 静默重扫（不改动勾选与提示） */
+  /** 静默重扫（保留勾选、不弹提示） */
   async function rescanQuiet() {
     const dirs = Array.from(new Set(files.value.map((f) => f.dir))).filter(Boolean)
     if (!dirs.length) return
+    // 扫描后 id 会重新生成，所以用路径来保留勾选状态
+    const keepPaths = new Set(
+      files.value.filter((f) => selected.value.has(f.id)).map((f) => f.path),
+    )
     try {
       const out = await api.scanFiles({
         dirs,
@@ -316,10 +330,9 @@ export const useAppStore = defineStore('app', () => {
         nameFilter: '',
         useRegex: false,
       })
-      const keep = selected.value
       files.value = out.entries
       selected.value = new Set(
-        out.entries.filter((f) => keep.has(f.id) || keep.has(f.path)).map((f) => f.id),
+        out.entries.filter((f) => keepPaths.has(f.path)).map((f) => f.id),
       )
       await runPreview()
     } catch {
@@ -337,6 +350,8 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function undo(id: string) {
+    // 撤销改名后后端会清空内存列表，这里先记下目录用于重新扫描
+    const dirs = Array.from(new Set(files.value.map((f) => f.dir))).filter(Boolean)
     busy.value = true
     phase.value = 'undo'
     try {
@@ -345,12 +360,16 @@ export const useAppStore = defineStore('app', () => {
         r.failed.length ? 'err' : 'ok',
         `已撤销 ${r.ok} 项${r.failed.length ? `，${r.failed.length} 项失败` : ''}`,
       )
-      files.value = await api.getFiles()
-      if (!files.value.length) {
-        await rescanQuiet()
+      const fresh = await api.getFiles()
+      if (fresh.length) {
+        files.value = fresh
+        selected.value = new Set()
+        await runPreview()
+      } else if (dirs.length) {
+        // 后端已清空，按原目录重新载入
+        await scan({ dirs })
       }
       await loadJournals()
-      await runPreview()
     } catch (e) {
       notify('err', errText(e))
     } finally {

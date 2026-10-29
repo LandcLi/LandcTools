@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { mockApi } from './mock'
 import type {
   BatchOptions,
   BatchReport,
@@ -13,7 +14,7 @@ import type {
   ScanOutcome,
 } from './types'
 
-export const api = {
+export const realApi = {
   scanFiles: (opts: ScanOptions) => invoke<ScanOutcome>('scan_files', { opts }),
   getFiles: () => invoke<FileEntry[]>('get_files'),
   clearFiles: () => invoke<void>('clear_files'),
@@ -26,6 +27,16 @@ export const api = {
   undoJournal: (id: string) => invoke<BatchReport>('undo_journal', { id }),
   getFileDetail: (path: string) => invoke<FileDetail>('get_file_detail', { path }),
 }
+
+export type Api = typeof realApi
+
+/**
+ * 演示模式：`VITE_MOCK=1 npm run build` 时用假数据，
+ * 用于浏览器里调 UI 与上架截图，不触碰真实文件。
+ */
+export const isMock = import.meta.env.VITE_MOCK === '1'
+
+export const api: Api = isMock ? (mockApi as unknown as Api) : realApi
 
 export function onProgress(cb: (p: ProgressPayload) => void): Promise<UnlistenFn> {
   return listen<ProgressPayload>('task:progress', (e) => cb(e.payload))
