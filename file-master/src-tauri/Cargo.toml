@@ -1,0 +1,52 @@
+[package]
+name = "landc-file-master"
+version = "0.1.0"
+description = "Landc 文件大师 - 批量改名 / 时间属性 / 元数据编辑"
+authors = ["Landc"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "landc_file_master_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+walkdir = "2"
+rayon = "1"
+filetime = "0.2"
+chrono = "0.4"
+regex = "1"
+uuid = { version = "1", features = ["v4"] }
+parking_lot = "0.12"
+anyhow = "1"
+thiserror = "1"
+
+# --- 元数据相关（第二阶段启用，先注释避免首次 cargo check 拉一堆依赖） ---
+# lofty = "0.21"          # 音频标签 ID3 / FLAC / MP4
+# lopdf = "0.34"          # PDF Info 字典
+# zip = "2"               # OOXML(docx/xlsx/pptx) 容器
+# quick-xml = "0.37"      # docProps/core.xml 读写
+# kamadak-exif = "0.6"    # 图片 EXIF
+
+[target.'cfg(windows)'.dependencies]
+# 用 windows-sys 而不是 windows：前者是裸 C 签名，跨版本不会因类型别名变化编译失败
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+incremental = false

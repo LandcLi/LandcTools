@@ -1,0 +1,425 @@
+import { defineStore } from 'pinia'
+import { computed, reactive, ref, shallowRef } from 'vue'
+import { open } from '@tauri-apps/plugin-dialog'
+import { api, errText, onProgress, onTaskDone } from '@/api'
+import { emptyRules } from '@/api/types'
+import type {
+  AttrSpec,
+  BatchReport,
+  FileEntry,
+  Journal,
+  RenamePlan,
+  RenameRules,
+  ScanOptions,
+  TimeSpec,
+} from '@/api/types'
+
+export type PanelKey = 'rename' | 'time' | 'attr' | 'ext' | 'meta' | 'history'
+export type ToastType = 'ok' | 'err' | 'info'
+
+export const useAppStore = defineStore('app', () => {
+  // ---------- 数据 ----------
+  const files = shallowRef<FileEntry[]>([])
+  const selected = ref<Set<string>>(new Set())
+  const plan = shallowRef<RenamePlan | null>(null)
+  const rules = reactive<RenameRules>(emptyRules())
+  const journals = ref<Journal[]>([])
+
+  // ---------- 界面 ----------
+  const panel = ref<PanelKey>('rename')
+  const theme = ref<'light' | 'dark'>('light')
+  const query = ref('')
+  const sidebarOpen = ref(true)
+
+  // ---------- 任务 ----------
+  const busy = ref(false)
+  const phase = ref('')
+  const progress = reactive({ done: 0, total: 0, current: '' })
+  const toast = ref<{ type: ToastType; text: string } | null>(null)
+
+  // ---------- 派生 ----------
+  const filtered = computed(() => {
+    const q = query.value.trim().toLowerCase()
+    if (!q) return files.value
+    return files.value.filter((f) => f.name.toLowerCase().includes(q))
+  })
+
+  const selectedPaths = computed(() => Array.from(selected.value))
+  const selectedCount = computed(() => selected.value.size)
+  const visibleCount = computed(() => filtered.value.length)
+
+  const changedCount = computed(() => plan.value?.changed ?? 0)
+  const errorCount = computed(() => plan.value?.errors ?? 0)
+  const warnCount = computed(() => plan.value?.warnings ?? 0)
+
+  /** 操作目标：有勾选就用勾选项，否则用全部（可见）文件 */
+  function targetPaths(): string[] {
+    if (selected.value.size > 0) return selectedPaths.value
+    return []
+  }
+
+  const progressPercent = computed(() => {
+    if (!progress.total) return 0
+    return Math.round((progress.done / progress.total) * 100)
+  })
+
+  // ---------- 提示 ----------
+  let toastTimer: number | undefined
+  function notify(type: ToastType, text: string) {
+    toast.value = { type, text }
+    window.clearTimeout(toastTimer)
+    toastTimer = window.setTimeout(() => (toast.value = null), type === 'err' ? 5200 : 3000)
+  }
+
+  // ---------- 选择 ----------
+  function toggleSelect(id: string) {
+    const s = new Set(selected.value)
+    if (s.has(id)) s.delete(id)
+    else s.add(id)
+    selected.value = s
+  }
+
+  function selectAll() {
+    if (selected.value.size === filtered.value.length && filtered.value.length > 0) {
+      selected.value = new Set()
+    } else {
+      selected.value = new Set(filtered.value.map((f) => f.id))
+    }
+  }
+
+  function clearSelection() {
+    selected.value = new Set()
+  }
+
+  // ---------- 主题 ----------
+  function setTheme(t: 'light' | 'dark') {
+    theme.value = t
+    document.documentElement.setAttribute('data-theme', t)
+    try {
+      localStorage.setItem('lcfm-theme', t)
+    } catch {
+      /* 隐私模式下忽略 */
+    }
+  }
+
+  function initTheme() {
+    let t: 'light' | 'dark' = 'light'
+    try {
+      const saved = localStorage.getItem('lcfm-theme')
+      if (saved === 'dark' || saved === 'light') t = saved
+      else if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) t = 'dark'
+    } catch {
+      /* ignore */
+    }
+    setTheme(t)
+  }
+
+  // ---------- 事件监听（只注册一次） ----------
+  let listenersReady = false
+  async function ensureListeners() {
+    if (listenersReady) return
+    listenersReady = true
+    await onProgress((p) => {
+      phase.value = p.phase
+      progress.done = p.done
+      progress.total = p.total
+      progress.current = p.current
+    })
+    await onTaskDone(() => {
+      /* 报告由调用方处理 */
+    })
+  }
+
+  // ---------- 扫描 ----------
+  async function pickDirs() {
+    const picked = await open({ directory: true, multiple: true, title: '选择文件夹' })
+    if (!picked) return
+    const dirs = Array.isArray(picked) ? picked : [picked]
+    await scan({ dirs })
+  }
+
+  async function scan(partial: Partial<ScanOptions>) {
+    await ensureListeners()
+    const opts: ScanOptions = {
+      dirs: [],
+      recursive: true,
+      includeHidden: false,
+      includeDirs: false,
+      exts: [],
+      nameFilter: '',
+      useRegex: false,
+      ...partial,
+    }
+    if (!opts.dirs.length) return
+
+    busy.value = true
+    phase.value = 'scan'
+    progress.done = 0
+    progress.total = 0
+    try {
+      const out = await api.scanFiles(opts)
+      files.value = out.entries
+      selected.value = new Set()
+      plan.value = null
+      if (out.truncated) {
+        notify('info', `文件数量超过上限，仅载入前 ${out.entries.length} 个`)
+      } else if (!out.entries.length) {
+        notify('info', '没有匹配到文件')
+      } else {
+        notify('ok', `已载入 ${out.entries.length} 个条目`)
+      }
+      if (out.errors.length) {
+        console.warn('扫描告警：', out.errors.slice(0, 5))
+      }
+      await runPreview()
+    } catch (e) {
+      notify('err', errText(e))
+    } finally {
+      busy.value = false
+      phase.value = ''
+    }
+  }
+
+  async function rescan() {
+    const dirs = Array.from(new Set(files.value.map((f) => f.dir))).filter(Boolean)
+    if (!dirs.length) return
+    await scan({ dirs })
+  }
+
+  async function clearAll() {
+    await api.clearFiles()
+    files.value = []
+    selected.value = new Set()
+    plan.value = null
+  }
+
+  // ---------- 预览 ----------
+  let previewTimer: number | undefined
+  function schedulePreview(delay = 160) {
+    window.clearTimeout(previewTimer)
+    previewTimer = window.setTimeout(() => void runPreview(), delay)
+  }
+
+  async function runPreview() {
+    if (!files.value.length) {
+      plan.value = null
+      return
+    }
+    try {
+      const snapshot = JSON.parse(JSON.stringify(rules)) as RenameRules
+      plan.value = await api.previewRename(snapshot)
+    } catch (e) {
+      plan.value = null
+      notify('err', errText(e))
+    }
+  }
+
+  // ---------- 执行 ----------
+  async function executeRename() {
+    if (!plan.value) return
+    if (plan.value.ruleError) {
+      notify('err', plan.value.ruleError)
+      return
+    }
+    if (plan.value.errors > 0) {
+      notify('err', `有 ${plan.value.errors} 个文件存在冲突，请先处理`)
+      return
+    }
+    if (plan.value.changed === 0) {
+      notify('info', '没有需要改名的文件')
+      return
+    }
+
+    busy.value = true
+    phase.value = 'rename'
+    progress.done = 0
+    progress.total = plan.value.changed
+    try {
+      const r: BatchReport = await api.executeRename()
+      files.value = await api.getFiles()
+      selected.value = new Set()
+      const msg = r.failed.length
+        ? `成功 ${r.ok} 个，失败 ${r.failed.length} 个`
+        : `已改名 ${r.ok} 个文件`
+      notify(r.failed.length ? 'err' : 'ok', msg)
+      if (r.failed.length) {
+        console.warn(
+          '失败明细：',
+          r.failed.map((f) => `${f.path} → ${f.reason}`),
+        )
+      }
+      await runPreview()
+      await loadJournals()
+    } catch (e) {
+      notify('err', errText(e))
+    } finally {
+      busy.value = false
+      phase.value = ''
+    }
+  }
+
+  async function applyTimes(times: TimeSpec | null, shift: TimeSpec | null) {
+    const targets = targetPaths()
+    const scope = targets.length ? `选中的 ${targets.length} 个文件` : '全部文件'
+    busy.value = true
+    phase.value = 'times'
+    try {
+      const r = await api.applyTimes({ targets, times, shift })
+      notify(
+        r.failed.length ? 'err' : 'ok',
+        `已处理 ${scope}：成功 ${r.ok} 个${r.failed.length ? `，失败 ${r.failed.length} 个` : ''}`,
+      )
+      if (r.failed.length) console.warn('失败明细：', r.failed)
+      await rescanQuiet()
+      await loadJournals()
+    } catch (e) {
+      notify('err', errText(e))
+    } finally {
+      busy.value = false
+      phase.value = ''
+    }
+  }
+
+  async function applyAttrs(attrs: AttrSpec) {
+    const targets = targetPaths()
+    const scope = targets.length ? `选中的 ${targets.length} 个文件` : '全部文件'
+    busy.value = true
+    phase.value = 'attrs'
+    try {
+      const r = await api.applyAttrs({ targets, attrs })
+      notify(
+        r.failed.length ? 'err' : 'ok',
+        `已处理 ${scope}：成功 ${r.ok} 个${r.failed.length ? `，失败 ${r.failed.length} 个` : ''}`,
+      )
+      if (r.failed.length) console.warn('失败明细：', r.failed)
+      await rescanQuiet()
+      await loadJournals()
+    } catch (e) {
+      notify('err', errText(e))
+    } finally {
+      busy.value = false
+      phase.value = ''
+    }
+  }
+
+  /** 静默重扫（不改动勾选与提示） */
+  async function rescanQuiet() {
+    const dirs = Array.from(new Set(files.value.map((f) => f.dir))).filter(Boolean)
+    if (!dirs.length) return
+    try {
+      const out = await api.scanFiles({
+        dirs,
+        recursive: true,
+        includeHidden: false,
+        includeDirs: false,
+        exts: [],
+        nameFilter: '',
+        useRegex: false,
+      })
+      const keep = selected.value
+      files.value = out.entries
+      selected.value = new Set(
+        out.entries.filter((f) => keep.has(f.id) || keep.has(f.path)).map((f) => f.id),
+      )
+      await runPreview()
+    } catch {
+      /* 静默失败，用户还有手动刷新 */
+    }
+  }
+
+  // ---------- 撤销 ----------
+  async function loadJournals() {
+    try {
+      journals.value = await api.listJournals()
+    } catch {
+      journals.value = []
+    }
+  }
+
+  async function undo(id: string) {
+    busy.value = true
+    phase.value = 'undo'
+    try {
+      const r = await api.undoJournal(id)
+      notify(
+        r.failed.length ? 'err' : 'ok',
+        `已撤销 ${r.ok} 项${r.failed.length ? `，${r.failed.length} 项失败` : ''}`,
+      )
+      files.value = await api.getFiles()
+      if (!files.value.length) {
+        await rescanQuiet()
+      }
+      await loadJournals()
+      await runPreview()
+    } catch (e) {
+      notify('err', errText(e))
+    } finally {
+      busy.value = false
+      phase.value = ''
+    }
+  }
+
+  async function cancel() {
+    try {
+      await api.cancelTask()
+      notify('info', '正在停止…')
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // ---------- 规则重置 ----------
+  function resetRules() {
+    Object.assign(rules, emptyRules())
+    void runPreview()
+  }
+
+  return {
+    // 数据
+    files,
+    selected,
+    plan,
+    rules,
+    journals,
+    // 界面
+    panel,
+    theme,
+    query,
+    sidebarOpen,
+    // 任务
+    busy,
+    phase,
+    progress,
+    progressPercent,
+    toast,
+    // 派生
+    filtered,
+    selectedPaths,
+    selectedCount,
+    visibleCount,
+    changedCount,
+    errorCount,
+    warnCount,
+    // 方法
+    notify,
+    toggleSelect,
+    selectAll,
+    clearSelection,
+    setTheme,
+    initTheme,
+    pickDirs,
+    scan,
+    rescan,
+    clearAll,
+    schedulePreview,
+    runPreview,
+    executeRename,
+    applyTimes,
+    applyAttrs,
+    loadJournals,
+    undo,
+    cancel,
+    resetRules,
+    targetPaths,
+  }
+})

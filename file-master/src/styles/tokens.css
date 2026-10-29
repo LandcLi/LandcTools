@@ -1,0 +1,111 @@
+/* 设计令牌：双主题。所有颜色都必须走变量，组件里不出现字面量色值。 */
+
+:root {
+  /* 背景层级 */
+  --c-bg: #f5f6f9;
+  --c-surface: #ffffff;
+  --c-surface-2: #fafbfd;
+  --c-surface-hover: #f1f2f7;
+  --c-surface-active: #e8eaf3;
+
+  /* 描边 */
+  --c-border: #e5e7ee;
+  --c-border-strong: #d2d6e0;
+
+  /* 文字 */
+  --c-text: #171a21;
+  --c-text-secondary: #565e6d;
+  --c-text-muted: #8c93a2;
+  --c-text-inverse: #ffffff;
+
+  /* 主色 */
+  --c-primary: #4f46e5;
+  --c-primary-hover: #4338ca;
+  --c-primary-active: #3730a3;
+  --c-primary-soft: #eef0fe;
+  --c-primary-ring: rgba(79, 70, 229, 0.18);
+
+  /* 语义色 */
+  --c-success: #0ea472;
+  --c-success-soft: #e6f7f1;
+  --c-warning: #d97706;
+  --c-warning-soft: #fdf4e5;
+  --c-danger: #dc2626;
+  --c-danger-soft: #fdecec;
+  --c-info: #2563eb;
+  --c-info-soft: #eaf1ff;
+
+  /* 阴影 */
+  --shadow-xs: 0 1px 2px rgba(18, 22, 32, 0.05);
+  --shadow-sm: 0 2px 6px rgba(18, 22, 32, 0.06);
+  --shadow-md: 0 6px 20px rgba(18, 22, 32, 0.08);
+  --shadow-lg: 0 18px 44px rgba(18, 22, 32, 0.14);
+
+  /* 圆角 */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  /* 字体 */
+  --font-sans: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "PingFang SC",
+    -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "Cascadia Mono", "JetBrains Mono", Consolas, "Courier New", monospace;
+
+  /* 尺寸 */
+  --header-h: 58px;
+  --status-h: 56px;
+  --sidebar-w: 348px;
+  --row-h: 34px;
+}
+
+[data-theme="dark"] {
+  --c-bg: #0e1116;
+  --c-surface: #161a21;
+  --c-surface-2: #1a1f27;
+  --c-surface-hover: #1f242e;
+  --c-surface-active: #272e3a;
+
+  --c-border: #262c36;
+  --c-border-strong: #364050;
+
+  --c-text: #e7eaf0;
+  --c-text-secondary: #a4adbc;
+  --c-text-muted: #707a8a;
+  --c-text-inverse: #0e1116;
+
+  --c-primary: #7b78ff;
+  --c-primary-hover: #9391ff;
+  --c-primary-active: #6a66ff;
+  --c-primary-soft: #1d1d3f;
+  --c-primary-ring: rgba(123, 120, 255, 0.26);
+
+  --c-success: #34d399;
+  --c-success-soft: #0f2a22;
+  --c-warning: #fbbf24;
+  --c-warning-soft: #2b2110;
+  --c-danger: #f87171;
+  --c-danger-soft: #2c1618;
+  --c-info: #60a5fa;
+  --c-info-soft: #12233c;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+
+/* 文件类型角标配色 */
+:root {
+  --kind-image: #0ea5e9;
+  --kind-office: #f97316;
+  --kind-pdf: #ef4444;
+  --kind-audio: #a855f7;
+  --kind-video: #ec4899;
+  --kind-archive: #eab308;
+  --kind-exec: #64748b;
+  --kind-text: #14b8a6;
+  --kind-other: #94a3b8;
+  --kind-folder: #f59e0b;
+}
