@@ -9,7 +9,7 @@
 mod commands;
 pub mod core;
 mod error;
-mod model;
+pub mod model;
 pub mod preflight;
 mod state;
 

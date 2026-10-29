@@ -23,6 +23,18 @@ export const useAppStore = defineStore('app', () => {
   const selected = ref<Set<string>>(new Set())
   const plan = shallowRef<RenamePlan | null>(null)
   const rules = reactive<RenameRules>(emptyRules())
+  /**
+   * 「后缀转换」面板**独占**的规则。
+   *
+   * 以前后缀面板直接改 `rules.extMode`，和改名规则是同一个对象，于是两边互相污染：
+   * 在后缀面板选过「替换为 jpg」但没执行，回到改名面板一开自动编号，
+   * 预览里所有文件后缀也跟着变成 jpg —— 用户看到的就是「编号影响了后缀」。
+   * 现在两套规则各自独立，执行范围由当前面板决定。
+   */
+  const extRules = reactive<{ mode: RenameRules['extMode']; value: string }>({
+    mode: 'keep',
+    value: '',
+  })
   const journals = ref<Journal[]>([])
   /** 用户添加过的文件夹（扫描根），用于显示来源、相对路径与重扫 */
   const roots = ref<string[]>([])
@@ -342,6 +354,23 @@ export const useAppStore = defineStore('app', () => {
   /** 预览请求序号：勾选快速变化时可能有多个请求在飞，只认最新一份结果 */
   let previewSeq = 0
 
+  /**
+   * 当前面板真正要用的规则集。
+   * 后缀面板只做后缀，其它字段一律清空 —— 这样用户在改名面板开的编号、
+   * 前缀后缀、查找替换都不会跟到后缀转换里去。
+   */
+  function effectiveRules(): RenameRules {
+    if (panel.value !== 'ext') return rules
+    return {
+      ...emptyRules(),
+      extMode: extRules.mode,
+      extValue: extRules.value,
+      // 后缀转换承诺「只改后缀」，所以连非法字符清洗也关掉，
+      // 否则名字里万一有奇怪字符会被顺手改掉，违背承诺。
+      sanitize: false,
+    }
+  }
+
   async function runPreview() {
     if (!files.value.length) {
       plan.value = null
@@ -350,7 +379,7 @@ export const useAppStore = defineStore('app', () => {
     ensureSelectionValid()
     const seq = ++previewSeq
     try {
-      const snapshot = JSON.parse(JSON.stringify(rules)) as RenameRules
+      const snapshot = JSON.parse(JSON.stringify(effectiveRules())) as RenameRules
       // 关键：把勾选作为 targets 传给后端，Plan 只覆盖这些文件，
       // 于是 changedCount / errors / 执行范围 全部与勾选一致。
       const p = await api.previewRename(snapshot, selectedPaths.value)
@@ -545,12 +574,21 @@ export const useAppStore = defineStore('app', () => {
     },
   )
 
+  // 切换面板要按新面板的规则重算：改名和后缀转换用的是两套规则，
+  // 不重算的话会拿着上一个面板的计划去执行（范围与效果都对不上）。
+  watch(panel, (now, prev) => {
+    if ((now === 'rename' || now === 'ext' || prev === 'rename' || prev === 'ext') && files.value.length) {
+      schedulePreview(0)
+    }
+  })
+
   return {
     // 数据
     files,
     selected,
     plan,
     rules,
+    extRules,
     journals,
     roots,
     // 界面

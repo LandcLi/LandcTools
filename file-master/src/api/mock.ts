@@ -177,8 +177,11 @@ function applyRules(stem: string, ext: string, seq: number, r: RenameRules) {
   let e = ext
   if (r.extMode === 'lower') e = ext.toLowerCase()
   else if (r.extMode === 'upper') e = ext.toUpperCase()
-  else if (r.extMode === 'replace') e = r.extValue.replace(/^\./, '').toLowerCase()
-  else if (r.extMode === 'add') {
+  else if (r.extMode === 'replace') {
+    // 空值不能把扩展名剥掉，与后端行为保持一致
+    const v = r.extValue.trim().replace(/^\./, '').toLowerCase()
+    if (v) e = v
+  } else if (r.extMode === 'add') {
     const add = r.extValue.replace(/^\./, '').toLowerCase()
     if (add) e = ext ? `${ext}.${add}` : add
   }

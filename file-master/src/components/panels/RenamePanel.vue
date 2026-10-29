@@ -153,6 +153,9 @@ onMounted(() => {
       <div v-if="store.rules.extMode === 'add'" class="field-hint">
         追加会用点连接：<code>a.tar</code> + <code>gz</code> → <code>a.tar.gz</code>
       </div>
+      <div v-else-if="store.rules.extMode === 'keep'" class="field-hint">
+        保持原样。只想改后缀不动文件名，用左侧「后缀转换」。
+      </div>
     </section>
 
     <!-- 高级 -->

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useAppStore } from '@/stores/app'
 import LcInput from '../ui/LcInput.vue'
 import LcSegmented from '../ui/LcSegmented.vue'
@@ -7,6 +7,15 @@ import LcButton from '../ui/LcButton.vue'
 import { FileType2, Zap } from 'lucide-vue-next'
 
 const store = useAppStore()
+
+// 后缀规则已经是独立的一份，必须自己触发重算，否则改了方式/内容列表不更新。
+// 只在后缀面板可见时才算，避免在其它面板里做无意义的整批重算。
+watch(
+  () => JSON.stringify(store.extRules),
+  () => {
+    if (store.panel === 'ext') store.schedulePreview()
+  },
+)
 
 const modeOptions = [
   { label: '替换', value: 'replace' },
@@ -34,13 +43,17 @@ const canRun = computed(
   () =>
     !store.busy &&
     total.value > 0 &&
+    store.extRules.mode !== 'keep' &&
     store.changedCount > 0 &&
     store.errorCount === 0 &&
     !store.plan?.ruleError,
 )
 
+/** 未选方式时，分段控件先高亮「替换」，但不写回规则（避免一进来就改后缀） */
+const shownMode = computed(() => (store.extRules.mode === 'keep' ? 'replace' : store.extRules.mode))
+
 function syncMode(v: string) {
-  store.rules.extMode = v as typeof store.rules.extMode
+  store.extRules.mode = v as typeof store.extRules.mode
   store.schedulePreview()
 }
 
@@ -72,18 +85,18 @@ function run() {
     <section class="section">
       <div class="section-title">转换方式</div>
       <LcSegmented
-        :model-value="store.rules.extMode === 'keep' ? 'replace' : store.rules.extMode"
+        :model-value="shownMode"
         :options="modeOptions"
         class="mb10"
         @update:model-value="syncMode"
       />
 
-      <template v-if="store.rules.extMode === 'replace' || store.rules.extMode === 'add'">
+      <template v-if="store.extRules.mode === 'replace' || store.extRules.mode === 'add'">
         <label class="field-label">
-          {{ store.rules.extMode === 'replace' ? '改成什么后缀' : '追加什么后缀' }}
+          {{ store.extRules.mode === 'replace' ? '改成什么后缀' : '追加什么后缀' }}
         </label>
         <LcInput
-          v-model="store.rules.extValue"
+          v-model="store.extRules.value"
           placeholder="如 jpg、png、mp4（不用输入点）"
           mono
           clearable
@@ -92,15 +105,16 @@ function run() {
       </template>
 
       <div class="field-hint">
-        <template v-if="store.rules.extMode === 'replace'">
+        <template v-if="store.extRules.mode === 'replace'">
           只改后缀文字，不会真正转换文件内容。视频、图片的真实格式转换需要专门工具。
         </template>
-        <template v-else-if="store.rules.extMode === 'lower' || store.rules.extMode === 'upper'">
-          把所有文件后缀统一成{{ store.rules.extMode === 'lower' ? '小写' : '大写' }}，文件名部分不动。
+        <template v-else-if="store.extRules.mode === 'lower' || store.extRules.mode === 'upper'">
+          把所有文件后缀统一成{{ store.extRules.mode === 'lower' ? '小写' : '大写' }}，文件名部分不动。
         </template>
-        <template v-else>
+        <template v-else-if="store.extRules.mode === 'add'">
           追加会用点连接：<code>a.tar</code> + <code>gz</code> → <code>a.tar.gz</code>
         </template>
+        <template v-else>先选一种转换方式。这里只改后缀，不会碰文件名。</template>
       </div>
     </section>
 

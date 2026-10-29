@@ -211,7 +211,16 @@ impl RenameRules {
     pub fn transform_ext(&self, ext: &str) -> String {
         match self.ext_mode {
             ExtMode::Keep => ext.to_string(),
-            ExtMode::Replace => self.ext_value.trim().trim_start_matches('.').to_lowercase(),
+            // 空值不能让扩展名消失：用户点了「替换」但没填内容时，应该什么都不做，
+            // 否则整批文件的扩展名会被剥掉（`a.jpg` → `a`），是不可逆的破坏。
+            ExtMode::Replace => {
+                let v = self.ext_value.trim().trim_start_matches('.').to_lowercase();
+                if v.is_empty() {
+                    ext.to_string()
+                } else {
+                    v
+                }
+            }
             ExtMode::Lower => ext.to_lowercase(),
             ExtMode::Upper => ext.to_uppercase(),
             ExtMode::Add => {
