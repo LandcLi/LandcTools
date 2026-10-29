@@ -3,21 +3,13 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 pub fn to_ms(t: Option<SystemTime>) -> Option<i64> {
     t.map(|st| {
         let dt: chrono::DateTime<chrono::Utc> = st.into();
         dt.timestamp_millis()
     })
-}
-
-pub fn from_ms(ms: i64) -> SystemTime {
-    if ms >= 0 {
-        UNIX_EPOCH + Duration::from_millis(ms as u64)
-    } else {
-        UNIX_EPOCH - Duration::from_millis(ms.unsigned_abs())
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

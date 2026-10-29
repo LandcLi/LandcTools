@@ -96,10 +96,21 @@ npm run build                      # 1. 构建前端 → dist/
 cd src-tauri && cargo build --release   # 2. 产出绿色 exe
 ```
 
-产物：`src-tauri/target/release/LandcFileMaster.exe`，单文件、双击即用。
+产物：`src-tauri/target/release/landc-file-master.exe`，单文件、双击即用。
 
-> 目标机需要 Microsoft Edge WebView2 运行时。Windows 11 与 Windows 10 21H2 之后系统自带；
-> 更早的系统需引导用户安装（微软官网免费）。
+> **注意**：`dist/` 变化后 `cargo build --release` 不会自动重编主 crate，
+> 必须 `touch src/lib.rs src/main.rs` 强制重编，否则 exe 里嵌入的还是旧前端。
+
+### 关于 WebView2 依赖
+
+绿色 exe 没有安装器，Tauri 的 `webviewInstallMode` 对便携版无效。缺 WebView2 时
+Tauri 会在创建窗口阶段失败，表现为**双击毫无反应**——这是最伤售后的失败模式。
+
+因此 `src-tauri/src/preflight.rs` 在 `main()` 最前面调用 `tauri::webview_version()`
+做前置探测：缺失时弹出中文对话框说明原因，并可用 `ShellExecuteW` 一键打开微软官方下载页。
+
+实际覆盖率：Windows 11 全部预装，Windows 10 绝大多数通过 Edge 更新已内置；
+缺失集中在 LTSC / Server / 精简镜像 / 企业策略禁用的机器上。
 
 ## 数据目录
 
