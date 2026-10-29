@@ -5,20 +5,30 @@ import { FolderOpen, FolderPlus, X } from 'lucide-vue-next'
 
 const store = useAppStore()
 
-/** 每个根目录下当前载入了多少个文件，直接标在文件夹后面 */
+/**
+ * 每个根目录下当前载入了多少个文件。
+ * 根目录之间可能嵌套（例如同时加了 A 和 A\B），此时每个文件只归属
+ * 最具体的那个根，否则 A 会把自己子目录的文件也数进去，数字虚高。
+ */
 const counts = computed(() => {
+  const roots = store.roots.map((r) => r.replace(/[\\/]+$/, '')).filter(Boolean)
+  const order = [...roots].sort((a, b) => b.length - a.length)
   const m = new Map<string, number>()
-  for (const r of store.roots) {
-    const rl = r.toLowerCase()
-    let n = 0
-    for (const f of store.files) {
-      const d = f.dir.toLowerCase()
-      if (d === rl || d.startsWith(rl + '\\') || d.startsWith(rl + '/')) n++
-    }
-    m.set(r, n)
+  for (const r of roots) m.set(r, 0)
+  for (const f of store.files) {
+    const d = f.dir.toLowerCase().replace(/[\\/]+$/, '')
+    const hit = order.find((r) => {
+      const rl = r.toLowerCase()
+      return d === rl || d.startsWith(rl + '\\')
+    })
+    if (hit) m.set(hit, (m.get(hit) ?? 0) + 1)
   }
   return m
 })
+
+function countOf(r: string): number {
+  return counts.value.get(r.replace(/[\\/]+$/, '')) ?? 0
+}
 </script>
 
 <template>
@@ -31,7 +41,7 @@ const counts = computed(() => {
     <div class="chips">
       <div v-for="r in store.roots" :key="r" class="chip" :title="r">
         <span class="path">{{ r }}</span>
-        <span class="cnt mono">{{ counts.get(r) ?? 0 }}</span>
+        <span class="cnt mono">{{ countOf(r) }}</span>
         <button
           class="x"
           type="button"

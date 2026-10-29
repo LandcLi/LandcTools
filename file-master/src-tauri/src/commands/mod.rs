@@ -117,12 +117,7 @@ pub fn preview_rename(
     let filtered: Vec<FileEntry>;
     let source: &[FileEntry] = match targets {
         Some(t) if !t.is_empty() => {
-            let set: std::collections::HashSet<&str> = t.iter().map(|s| s.as_str()).collect();
-            filtered = files
-                .iter()
-                .filter(|f| set.contains(f.path.as_str()))
-                .cloned()
-                .collect();
+            filtered = pick_by_targets(files.as_slice(), &t);
             if filtered.is_empty() {
                 return Err(AppError::Invalid(
                     "选中的文件已不在列表中，请刷新后重试".into(),
@@ -279,16 +274,40 @@ pub struct BatchOptions {
     pub attrs: Option<AttrSpec>,
 }
 
+// ---------------------------------------------------------------------------
+// 目标筛选
+// ---------------------------------------------------------------------------
+
+/// 按 targets 从当前列表里挑出文件。
+/// targets 的元素按 **path** 匹配；额外兼容 id（前端早期误传 UUID 时
+/// 会静默变成零命中，进而被当成「全部」，这里直接让它匹配不上或命中，都更安全）。
+fn pick_by_targets(files: &[FileEntry], targets: &[String]) -> Vec<FileEntry> {
+    let set: std::collections::HashSet<&str> = targets.iter().map(|s| s.as_str()).collect();
+    let exact: Vec<FileEntry> = files
+        .iter()
+        .filter(|f| set.contains(f.path.as_str()) || set.contains(f.id.as_str()))
+        .cloned()
+        .collect();
+    if !exact.is_empty() {
+        return exact;
+    }
+    // 大小写 / 分隔符风格不一致时降级做不区分大小写匹配
+    let ci: std::collections::HashSet<String> = targets.iter().map(|s| s.to_lowercase()).collect();
+    files
+        .iter()
+        .filter(|f| ci.contains(&f.path.to_lowercase()) || ci.contains(&f.id.to_lowercase()))
+        .cloned()
+        .collect()
+}
+
 fn pick_targets(state: &State<'_, SharedState>, targets: &[String]) -> Vec<FileEntry> {
     let files = state.files.read();
     if targets.is_empty() {
         files.iter().filter(|f| !f.is_dir).cloned().collect()
     } else {
-        let set: std::collections::HashSet<&str> = targets.iter().map(|s| s.as_str()).collect();
-        files
-            .iter()
-            .filter(|f| set.contains(f.path.as_str()) && !f.is_dir)
-            .cloned()
+        pick_by_targets(files.as_slice(), targets)
+            .into_iter()
+            .filter(|f| !f.is_dir)
             .collect()
     }
 }

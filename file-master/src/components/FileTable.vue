@@ -205,7 +205,7 @@ function isSelected(id: string): boolean {
 
 .thead {
   display: grid;
-  grid-template-columns: 34px 44px minmax(120px, 1fr) 18px minmax(110px, 1fr) 150px 76px 120px 24px;
+  grid-template-columns: 34px 44px minmax(110px, 1fr) 18px minmax(100px, 0.95fr) minmax(110px, 0.9fr) 76px 118px 24px;
   align-items: center;
   gap: 8px;
   height: 34px;
@@ -239,7 +239,7 @@ function isSelected(id: string): boolean {
   left: 0;
   right: 0;
   display: grid;
-  grid-template-columns: 34px 44px minmax(120px, 1fr) 18px minmax(110px, 1fr) 150px 76px 120px 24px;
+  grid-template-columns: 34px 44px minmax(110px, 1fr) 18px minmax(100px, 0.95fr) minmax(110px, 0.9fr) 76px 118px 24px;
   align-items: center;
   gap: 8px;
   height: 34px;

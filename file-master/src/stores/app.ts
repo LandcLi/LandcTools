@@ -46,7 +46,22 @@ export const useAppStore = defineStore('app', () => {
     return files.value.filter((f) => f.name.toLowerCase().includes(q))
   })
 
-  const selectedPaths = computed(() => Array.from(selected.value))
+  /** 勾选的条目 id（扫描时生成的 UUID，每次扫描都会变） */
+  const selectedIds = computed(() => Array.from(selected.value))
+  /**
+   * 勾选条目的**真实路径**。
+   * 后端一律按 path 匹配目标，所以这里必须把 id 映射回 path。
+   * 直接把 UUID 传下去会让后端一个都找不到 —— 表现为改名时弹
+   * 「选中的文件已不在列表中」，时间/属性操作则静默失效。
+   */
+  const selectedPaths = computed(() => {
+    if (!selected.value.size) return []
+    const out: string[] = []
+    for (const f of files.value) {
+      if (selected.value.has(f.id)) out.push(f.path)
+    }
+    return out
+  })
   const selectedCount = computed(() => selected.value.size)
   const visibleCount = computed(() => filtered.value.length)
   const hasSelection = computed(() => selected.value.size > 0)
@@ -90,14 +105,47 @@ export const useAppStore = defineStore('app', () => {
       !busy.value,
   )
 
-  /** 把绝对目录缩成相对「已添加文件夹」的短路径，供列表展示 */
+  /** 取路径最后一级目录名；盘根（如 C:\）原样返回 */
+  function baseName(p: string): string {
+    const s = p.replace(/[\\/]+$/, '')
+    if (!s) return p
+    const i = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/'))
+    return i < 0 ? s : s.slice(i + 1)
+  }
+
+  /** 根目录按长度降序，保证嵌套根优先命中更具体的那个 */
+  const sortedRoots = computed(() =>
+    roots.value
+      .map((r) => r.replace(/[\\/]+$/, ''))
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length),
+  )
+
+  /** 根目录的显示名：盘根显示 `D:\`，其余取最后一级目录名 */
+  function rootLabel(r: string): string {
+    if (/^[a-zA-Z]:$/.test(r)) return r + '\\'
+    return baseName(r) || r
+  }
+
+  /**
+   * 把绝对目录缩成带根名的短路径，供列表「所在位置」列展示。
+   * 根目录本身返回根目录名（如 `Photos`），而不是无意义的 `.`；
+   * 子目录返回 `Photos\2024\旅行`；不在任何根下的原样返回。
+   */
   function relDir(dir: string): string {
     if (!dir) return ''
-    const d = dir.toLowerCase()
-    for (const r of roots.value) {
-      const rl = r.toLowerCase()
-      if (d === rl) return '.'
-      if (d.startsWith(rl + '\\') || d.startsWith(rl + '/')) return dir.slice(r.length + 1)
+    const trimmed = dir.replace(/[\\/]+$/, '')
+    const d = trimmed.toLowerCase().replace(/\//g, '\\')
+    for (const r of sortedRoots.value) {
+      const rl = r.toLowerCase().replace(/\//g, '\\')
+      if (d === rl) return rootLabel(r)
+      if (d.startsWith(rl + '\\')) {
+        const rest = trimmed.slice(r.length + 1).replace(/\//g, '\\')
+        const label = rootLabel(r)
+        if (!rest) return label
+        // 盘根（D:\）自带尾分隔符，不能再补一个
+        return label.endsWith('\\') ? label + rest : `${label}\\${rest}`
+      }
     }
     return dir
   }
@@ -133,6 +181,22 @@ export const useAppStore = defineStore('app', () => {
 
   function clearSelection() {
     selected.value = new Set()
+  }
+
+  /**
+   * 勾选与列表不同步时（重扫后 id 全变）自动清理。
+   * 否则会出现「有勾选、但一个都匹配不上」的中间态 —— 那种情况下如果
+   * 把空目标当成「全部」传给后端，就会违背用户意图去动所有文件。
+   */
+  function ensureSelectionValid() {
+    if (!selected.value.size) return
+    const alive = new Set(files.value.map((f) => f.id))
+    for (const id of selected.value) {
+      if (!alive.has(id)) {
+        selected.value = new Set()
+        return
+      }
+    }
   }
 
   // ---------- 主题 ----------
@@ -283,6 +347,7 @@ export const useAppStore = defineStore('app', () => {
       plan.value = null
       return
     }
+    ensureSelectionValid()
     const seq = ++previewSeq
     try {
       const snapshot = JSON.parse(JSON.stringify(rules)) as RenameRules
@@ -502,6 +567,7 @@ export const useAppStore = defineStore('app', () => {
     // 派生
     filtered,
     selectedPaths,
+    selectedIds,
     selectedCount,
     visibleCount,
     hasSelection,
