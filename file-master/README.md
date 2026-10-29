@@ -92,14 +92,30 @@ cargo check            # 后端类型检查（在 src-tauri 目录）
 ## 打包
 
 ```bash
-npm run build                      # 1. 构建前端 → dist/
-cd src-tauri && cargo build --release   # 2. 产出绿色 exe
+npm run build:exe
 ```
 
-产物：`src-tauri/target/release/landc-file-master.exe`，单文件、双击即用。
+一条命令搞定：`tauri build --no-bundle`（自动跑前端构建 + 带 `custom-protocol` 编译）
+→ `scripts/copy-release.mjs` 做三项校验 → 复制到 `release/LandcFileMaster.exe`。
 
-> **注意**：`dist/` 变化后 `cargo build --release` 不会自动重编主 crate，
-> 必须 `touch src/lib.rs src/main.rs` 强制重编，否则 exe 里嵌入的还是旧前端。
+### ⚠️ 不要直接 `cargo build --release`
+
+Tauri 2 用 `custom-protocol` 这个 Cargo feature 区分两种模式：
+
+| 编译方式 | 结果 | 双击表现 |
+| --- | --- | --- |
+| `tauri build`（带 `--features custom-protocol`） | 前端 `dist/` 内嵌进 exe | 正常打开 |
+| `cargo build --release`（不带该 feature） | 只嵌入 `devUrl` | **报「localhost 拒绝连接」** |
+
+第二种编译产物**编译期零报错**，只有用户双击时才暴露，是最难排查的一类问题。
+`scripts/copy-release.mjs` 会读取 `target/release/build/*/output` 里的 `rustc-cfg`，
+一旦发现是 `dev` 构建就直接 `exit 1`，从源头拦住。
+
+同理，`custom-protocol` **不能写进 `[features] default`** —— 否则 `tauri dev` 也会去加载
+内嵌资源，热更新失效。让它只由 `tauri build` 显式带上。
+
+> `dist/` 变化后 `tauri build` 会正确重编主 crate；早期用 `cargo build` 时遇到的
+> 「必须 touch src/lib.rs 才会重编」问题，用 `tauri build` 后不再存在。
 
 ### 关于 WebView2 依赖
 

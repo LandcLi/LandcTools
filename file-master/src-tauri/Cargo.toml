@@ -10,6 +10,15 @@ rust-version = "1.77"
 name = "landc_file_master_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# 这行不能删。Tauri 2 用 `custom-protocol` 区分开发/生产：
+#   无此 feature -> cfg(dev) 成立 -> 加载 devUrl（连 Vite 开发服务器）
+#   有此 feature -> 加载 frontendDist（把 dist 内嵌进 exe）
+# 注意：这里**故意不放进 default**。`tauri build` 会自动加 --features custom-protocol，
+# `tauri dev` 则不加（保持热更新）。若写进 default，tauri dev 也会变成加载内嵌资源。
+# 结论：构建 exe 一律用 `npm run build:exe`，不要直接 cargo build --release。
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
