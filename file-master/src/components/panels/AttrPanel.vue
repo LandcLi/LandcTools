@@ -53,7 +53,7 @@ function reset() {
   <div class="panel fade-in">
     <div class="panel-head">
       <span class="panel-name">文件属性</span>
-      <span class="scope">{{ scopeText }}</span>
+      <span class="scope" :class="{ on: store.hasSelection }">{{ scopeText }}</span>
     </div>
 
     <section class="section">
@@ -128,6 +128,11 @@ function reset() {
   font-size: 11px;
   color: var(--c-text-muted);
   white-space: nowrap;
+}
+
+.scope.on {
+  color: var(--c-primary);
+  font-weight: 600;
 }
 
 .attr-row {

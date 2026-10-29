@@ -15,10 +15,10 @@ const modeOptions = [
   { label: '追加', value: 'add' },
 ]
 
-/** 当前后缀分布，让用户在转换前心里有数 */
+/** 当前后缀分布，让用户在转换前心里有数（统计范围跟随勾选） */
 const dist = computed(() => {
   const m = new Map<string, number>()
-  for (const f of store.files) {
+  for (const f of store.targetFiles) {
     if (f.isDir) continue
     const k = f.ext || '(无)'
     m.set(k, (m.get(k) ?? 0) + 1)
@@ -28,7 +28,7 @@ const dist = computed(() => {
     .slice(0, 10)
 })
 
-const total = computed(() => store.files.filter((f) => !f.isDir).length)
+const total = computed(() => store.targetFiles.filter((f) => !f.isDir).length)
 
 const canRun = computed(
   () =>
@@ -53,7 +53,9 @@ function run() {
   <div class="panel fade-in">
     <div class="panel-head">
       <span class="panel-name">后缀转换</span>
-      <span class="scope">{{ total }} 个文件</span>
+      <span class="scope" :class="{ on: store.hasSelection }">
+        {{ store.hasSelection ? '勾选' : '全部' }} {{ total }} 个文件
+      </span>
     </div>
 
     <section class="section">
@@ -134,6 +136,11 @@ function run() {
 .scope {
   font-size: 11px;
   color: var(--c-text-muted);
+}
+
+.scope.on {
+  color: var(--c-primary);
+  font-weight: 600;
 }
 
 .chips {

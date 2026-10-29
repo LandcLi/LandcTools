@@ -19,7 +19,9 @@ export const realApi = {
   getFiles: () => invoke<FileEntry[]>('get_files'),
   clearFiles: () => invoke<void>('clear_files'),
   cancelTask: () => invoke<void>('cancel_task'),
-  previewRename: (rules: RenameRules) => invoke<RenamePlan>('preview_rename', { rules }),
+  // targets 为空数组 = 对全部文件生效；非空 = 只算这些文件
+  previewRename: (rules: RenameRules, targets: string[]) =>
+    invoke<RenamePlan>('preview_rename', { rules, targets }),
   executeRename: () => invoke<BatchReport>('execute_rename'),
   applyTimes: (opts: BatchOptions) => invoke<BatchReport>('apply_times', { opts }),
   applyAttrs: (opts: BatchOptions) => invoke<BatchReport>('apply_attrs', { opts }),

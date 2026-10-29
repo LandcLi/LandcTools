@@ -51,6 +51,8 @@ export interface ScanOutcome {
   matched: number
   truncated: boolean
   errors: string[]
+  /** 实际扫描的根目录，用于展示「已添加的文件夹」与计算相对路径 */
+  roots: string[]
 }
 
 export type CaseMode = 'none' | 'lower' | 'upper' | 'title' | 'sentence'

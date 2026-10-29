@@ -22,6 +22,8 @@ interface Row {
   p: PlanItem | undefined
   changed: boolean
   d: Diff | null
+  /** 相对「已添加文件夹」的短路径，用于「位置」列 */
+  loc: string
 }
 
 const planMap = computed(() => {
@@ -34,7 +36,13 @@ const rows = computed<Row[]>(() =>
   store.filtered.map((f) => {
     const p = planMap.value.get(f.id)
     const changed = !!p?.changed
-    return { f, p, changed, d: changed && p ? diffParts(f.name, p.newName) : null }
+    return {
+      f,
+      p,
+      changed,
+      d: changed && p ? diffParts(f.name, p.newName) : null,
+      loc: store.relDir(f.dir),
+    }
   }),
 )
 
@@ -92,6 +100,7 @@ function isSelected(id: string): boolean {
       <div class="cell-name">原文件名</div>
       <div class="cell-arrow" />
       <div class="cell-preview">预览结果</div>
+      <div class="cell-loc">所在位置</div>
       <div class="cell-size">大小</div>
       <div class="cell-time">修改时间</div>
       <div class="cell-flag" />
@@ -116,10 +125,12 @@ function isSelected(id: string): boolean {
           class="tr"
           :class="{
             sel: isSelected(it.row.f.id),
+            out: store.hasSelection && !isSelected(it.row.f.id),
             err: it.row.p?.level === 'error',
             warn: it.row.p?.level === 'warn',
           }"
           :style="{ transform: `translateY(${it.start}px)` }"
+          :title="it.row.f.path"
           @click="store.toggleSelect(it.row.f.id)"
           @dblclick="reveal(it.row.f.path)"
         >
@@ -153,6 +164,10 @@ function isSelected(id: string): boolean {
               {{ it.row.p.issues[0] }}
             </span>
             <span v-else class="dash">—</span>
+          </div>
+
+          <div class="cell-loc">
+            <span class="loc">{{ it.row.loc || '—' }}</span>
           </div>
 
           <div class="cell-size mono">
@@ -190,11 +205,12 @@ function isSelected(id: string): boolean {
 
 .thead {
   display: grid;
-  grid-template-columns: 34px 44px minmax(120px, 1fr) 18px minmax(120px, 1fr) 76px 120px 24px;
+  grid-template-columns: 34px 44px minmax(120px, 1fr) 18px minmax(110px, 1fr) 150px 76px 120px 24px;
   align-items: center;
   gap: 8px;
   height: 34px;
-  padding: 0 12px;
+  /* 右侧多留 10px 与下方滚动条占位对齐 */
+  padding: 0 22px 0 12px;
   background: var(--c-surface-2);
   border-bottom: 1px solid var(--c-border);
   font-size: 11.5px;
@@ -208,6 +224,8 @@ function isSelected(id: string): boolean {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  /* 始终为滚动条保留位置，避免内容宽度随滚动条出现/消失跳动 */
+  scrollbar-gutter: stable;
 }
 
 .phantom {
@@ -221,7 +239,7 @@ function isSelected(id: string): boolean {
   left: 0;
   right: 0;
   display: grid;
-  grid-template-columns: 34px 44px minmax(120px, 1fr) 18px minmax(120px, 1fr) 76px 120px 24px;
+  grid-template-columns: 34px 44px minmax(120px, 1fr) 18px minmax(110px, 1fr) 150px 76px 120px 24px;
   align-items: center;
   gap: 8px;
   height: 34px;
@@ -244,6 +262,15 @@ function isSelected(id: string): boolean {
   background: color-mix(in srgb, var(--c-primary) 14%, var(--c-surface));
 }
 
+/* 有其他勾选时，未被勾选的行弱化 —— 让「这次只改这些」一眼可见 */
+.tr.out {
+  opacity: 0.42;
+}
+
+.tr.out:hover {
+  opacity: 0.72;
+}
+
 .tr.err {
   box-shadow: inset 3px 0 0 var(--c-danger);
 }
@@ -259,6 +286,20 @@ function isSelected(id: string): boolean {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.cell-loc {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.loc {
+  display: block;
+  font-size: 11.5px;
+  color: var(--c-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cell-name {

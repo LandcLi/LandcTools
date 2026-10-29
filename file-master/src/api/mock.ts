@@ -190,12 +190,21 @@ function applyRules(stem: string, ext: string, seq: number, r: RenameRules) {
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 let journals: Journal[] = []
+/** 上一次预览的计划，供 executeRename 演示「真的改了名」 */
+let lastPlan: PlanItem[] = []
 
 export const mockApi = {
   async scanFiles(_opts: ScanOptions): Promise<ScanOutcome> {
     await delay(420)
     entries = buildEntries()
-    return { entries, scanned: entries.length, matched: entries.length, truncated: false, errors: [] }
+    return {
+      entries,
+      scanned: entries.length,
+      matched: entries.length,
+      truncated: false,
+      errors: [],
+      roots: [D1, D2],
+    }
   },
 
   async getFiles(): Promise<FileEntry[]> {
@@ -208,9 +217,11 @@ export const mockApi = {
 
   async cancelTask(): Promise<void> {},
 
-  async previewRename(rules: RenameRules): Promise<RenamePlan> {
+  async previewRename(rules: RenameRules, targets: string[]): Promise<RenamePlan> {
+    // 与后端语义一致：targets 非空时只对这些文件建计划
+    const scope = targets.length ? entries.filter((e) => targets.includes(e.path)) : entries
     const counters = new Map<string, number>()
-    const items: PlanItem[] = entries.map((e) => {
+    const items: PlanItem[] = scope.map((e) => {
       const key = rules.numbering.enabled && rules.numbering.perDir ? e.dir : ''
       const seq = counters.get(key) ?? 0
       counters.set(key, seq + 1)
@@ -248,6 +259,7 @@ export const mockApi = {
       }
     }
 
+    lastPlan = items
     const changed = items.filter((i) => i.changed).length
     return {
       items,
@@ -262,17 +274,29 @@ export const mockApi = {
 
   async executeRename(): Promise<BatchReport> {
     await delay(600)
-    const before = entries.length
+    // 演示模式真的把新名字写回内存，这样「立即改名」后列表会变，能看到效果
+    const done = lastPlan.filter((i) => i.changed && i.level !== 'error')
+    const byPath = new Map(entries.map((e) => [e.path, e]))
+    for (const it of done) {
+      const e = byPath.get(it.oldPath)
+      if (!e) continue
+      const dot = it.newName.lastIndexOf('.')
+      e.name = it.newName
+      e.path = it.newPath
+      e.stem = dot > 0 ? it.newName.slice(0, dot) : it.newName
+      e.ext = dot > 0 ? it.newName.slice(dot + 1).toLowerCase() : ''
+    }
+    lastPlan = []
     const j: Journal = {
       id: `mock-j-${journals.length + 1}`,
-      title: `批量改名 ${before} 个文件`,
+      title: `批量改名 ${done.length} 个文件`,
       kind: 'rename',
       createdAt: Date.now(),
       entries: [],
       undone: false,
     }
     journals = [j, ...journals]
-    return { ok: before, failed: [], cancelled: false, journalId: j.id, elapsedMs: 600 }
+    return { ok: done.length, failed: [], cancelled: false, journalId: j.id, elapsedMs: 600 }
   },
 
   async applyTimes(_opts: BatchOptions): Promise<BatchReport> {

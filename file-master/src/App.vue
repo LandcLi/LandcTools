@@ -3,6 +3,7 @@ import { onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import TopBar from '@/components/TopBar.vue'
 import Sidebar from '@/components/Sidebar.vue'
+import RootsBar from '@/components/RootsBar.vue'
 import FileTable from '@/components/FileTable.vue'
 import StatusBar from '@/components/StatusBar.vue'
 
@@ -19,7 +20,10 @@ onMounted(() => {
     <TopBar />
     <main class="main">
       <Sidebar v-show="store.sidebarOpen" />
-      <FileTable />
+      <div class="content">
+        <RootsBar />
+        <FileTable />
+      </div>
     </main>
     <StatusBar />
 
@@ -42,6 +46,15 @@ onMounted(() => {
 .main {
   display: flex;
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }

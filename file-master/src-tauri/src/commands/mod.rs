@@ -102,12 +102,38 @@ pub fn cancel_task(state: State<'_, SharedState>) {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn preview_rename(state: State<'_, SharedState>, rules: RenameRules) -> AppResult<RenamePlan> {
+pub fn preview_rename(
+    state: State<'_, SharedState>,
+    rules: RenameRules,
+    targets: Option<Vec<String>>,
+) -> AppResult<RenamePlan> {
     let files = state.files.read();
     if files.is_empty() {
         return Err(AppError::Invalid("请先添加文件或文件夹".into()));
     }
-    let plan = rename::build_plan(&files, &rules)?;
+
+    // targets 为空表示「对全部文件生效」；非空时只对本批次内的文件建计划。
+    // 这样勾选的语义才能贯穿到执行阶段（execute_rename 直接用这份 plan）。
+    let filtered: Vec<FileEntry>;
+    let source: &[FileEntry] = match targets {
+        Some(t) if !t.is_empty() => {
+            let set: std::collections::HashSet<&str> = t.iter().map(|s| s.as_str()).collect();
+            filtered = files
+                .iter()
+                .filter(|f| set.contains(f.path.as_str()))
+                .cloned()
+                .collect();
+            if filtered.is_empty() {
+                return Err(AppError::Invalid(
+                    "选中的文件已不在列表中，请刷新后重试".into(),
+                ));
+            }
+            &filtered
+        }
+        _ => files.as_slice(),
+    };
+
+    let plan = rename::build_plan(source, &rules)?;
     *state.plan.write() = Some(plan.clone());
     Ok(plan)
 }

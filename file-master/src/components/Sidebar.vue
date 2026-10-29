@@ -6,7 +6,17 @@ import AttrPanel from './panels/AttrPanel.vue'
 import ExtPanel from './panels/ExtPanel.vue'
 import MetaPanel from './panels/MetaPanel.vue'
 import HistoryPanel from './panels/HistoryPanel.vue'
-import { Type, Clock, SlidersHorizontal, FileType2, Tags, History } from 'lucide-vue-next'
+import LcButton from './ui/LcButton.vue'
+import {
+  Type,
+  Clock,
+  SlidersHorizontal,
+  FileType2,
+  Tags,
+  History,
+  Rocket,
+  AlertTriangle,
+} from 'lucide-vue-next'
 import type { Component } from 'vue'
 
 const store = useAppStore()
@@ -44,6 +54,38 @@ const tabs: { key: PanelKey; label: string; icon: Component }[] = [
       <MetaPanel v-show="store.panel === 'meta'" />
       <HistoryPanel v-show="store.panel === 'history'" />
     </div>
+
+    <!-- 执行区固定在底部：改规则和点执行在同一个视觉流里，不用再往右下角找 -->
+    <footer v-if="store.panel === 'rename'" class="exec">
+      <div class="exec-head">
+        <span class="exec-scope" :class="{ on: store.hasSelection }" :title="store.scopeLabel">
+          {{ store.scopeLabel }}
+        </span>
+        <span v-if="store.errorCount > 0" class="exec-bad">
+          <AlertTriangle :size="11" />
+          {{ store.errorCount }} 个冲突
+        </span>
+        <span v-else-if="store.changedCount > 0" class="exec-ok">
+          将改动 {{ store.changedCount }} 个
+        </span>
+        <span v-else class="exec-dim">无改动</span>
+      </div>
+
+      <LcButton
+        variant="primary"
+        size="lg"
+        block
+        :disabled="!store.canExecuteRename"
+        title="按预览结果执行改名（可撤销）"
+        @click="store.executeRename()"
+      >
+        <template #icon><Rocket :size="15" /></template>
+        立即改名
+        <span v-if="store.changedCount > 0" class="pill">{{ store.changedCount }}</span>
+      </LcButton>
+
+      <div v-if="store.plan?.ruleError" class="exec-err">{{ store.plan.ruleError }}</div>
+    </footer>
   </aside>
 </template>
 
@@ -103,5 +145,79 @@ const tabs: { key: PanelKey; label: string; icon: Component }[] = [
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* ---------- 底部执行区 ---------- */
+.exec {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--c-border);
+  background: var(--c-surface);
+  box-shadow: 0 -6px 14px -10px rgba(0, 0, 0, 0.18);
+}
+
+.exec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+  min-width: 0;
+}
+
+.exec-scope {
+  color: var(--c-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 有勾选时高亮：明确告诉用户「这次不是全部」 */
+.exec-scope.on {
+  color: var(--c-primary);
+  font-weight: 600;
+}
+
+.exec-ok {
+  flex: none;
+  color: var(--c-success);
+  font-weight: 600;
+}
+
+.exec-bad {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--c-danger);
+  font-weight: 600;
+}
+
+.exec-dim {
+  flex: none;
+  color: var(--c-text-muted);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.24);
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.exec-err {
+  font-size: 11px;
+  color: var(--c-danger);
+  line-height: 1.45;
 }
 </style>

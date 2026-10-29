@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAppStore } from '@/stores/app'
-import LcButton from './ui/LcButton.vue'
 import LcProgress from './ui/LcProgress.vue'
-import { AlertTriangle, CheckCircle2, CircleSlash } from 'lucide-vue-next'
+import { AlertTriangle, CheckCircle2, CircleSlash, ListChecks, Layers } from 'lucide-vue-next'
 
 const store = useAppStore()
 
@@ -24,16 +23,6 @@ const phaseText = computed(() => {
   }
 })
 
-const canExecute = computed(
-  () =>
-    store.panel === 'rename' &&
-    !!store.plan &&
-    store.plan.changed > 0 &&
-    store.plan.errors === 0 &&
-    !store.plan.ruleError &&
-    !store.busy,
-)
-
 const readyText = computed(() => {
   if (!store.files.length) return '尚未载入文件'
   if (store.plan?.ruleError) return store.plan.ruleError
@@ -52,7 +41,7 @@ const readyText = computed(() => {
       <span v-if="store.query && store.visibleCount !== store.files.length" class="stat">
         匹配 <b>{{ store.visibleCount }}</b>
       </span>
-      <span v-if="store.selectedCount" class="stat">
+      <span v-if="store.selectedCount" class="stat sel">
         已选 <b>{{ store.selectedCount }}</b>
       </span>
       <span v-if="store.warnCount" class="stat warn">
@@ -81,18 +70,11 @@ const readyText = computed(() => {
     </div>
 
     <div class="right">
-      <LcButton
-        v-if="store.panel === 'rename'"
-        variant="primary"
-        size="lg"
-        :disabled="!canExecute"
-        @click="store.executeRename()"
-      >
-        立即改名
-        <template v-if="store.changedCount > 0" #icon>
-          <span class="count-pill">{{ store.changedCount }}</span>
-        </template>
-      </LcButton>
+      <span v-if="store.files.length" class="scope" :class="{ on: store.hasSelection }">
+        <ListChecks v-if="store.hasSelection" :size="12" />
+        <Layers v-else :size="12" />
+        {{ store.hasSelection ? `仅处理勾选的 ${store.selectedCount} 个` : `处理全部 ${store.files.length} 个` }}
+      </span>
     </div>
   </footer>
 </template>
@@ -132,6 +114,15 @@ const readyText = computed(() => {
 
 .stat.warn {
   color: var(--c-warning);
+}
+
+.stat.sel {
+  color: var(--c-primary);
+  font-weight: 600;
+}
+
+.stat.sel b {
+  color: var(--c-primary);
 }
 
 .mid {
@@ -195,17 +186,24 @@ const readyText = computed(() => {
   gap: 8px;
 }
 
-.count-pill {
+/* 右下角常驻显示「本次操作范围」，替代原来放在这里的执行按钮 */
+.scope {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 17px;
-  padding: 0 5px;
+  gap: 5px;
+  padding: 2px 10px;
+  border: 1px solid var(--c-border);
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.24);
-  font-size: 10.5px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  background: var(--c-surface-2);
+}
+
+.scope.on {
+  border-color: color-mix(in srgb, var(--c-primary) 40%, transparent);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  font-weight: 600;
 }
 </style>

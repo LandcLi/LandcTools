@@ -66,6 +66,8 @@ pub struct ScanOutcome {
     pub matched: usize,
     pub truncated: bool,
     pub errors: Vec<String>,
+    /// 实际扫描的根目录（规范化后）。前端用它显示「已添加的文件夹」并计算相对路径。
+    pub roots: Vec<String>,
 }
 
 #[cfg(windows)]
@@ -111,12 +113,26 @@ where
     let mut errors: Vec<String> = Vec::new();
     let mut scanned = 0usize;
     let mut truncated = false;
+    // 实际生效的根目录（去掉末尾分隔符，保持用户原始大小写）
+    let mut roots: Vec<String> = Vec::new();
 
     for dir in &opts.dirs {
         let root = PathBuf::from(dir);
         if !root.exists() {
             errors.push(format!("目录不存在：{dir}"));
             continue;
+        }
+
+        let normalized = dir
+            .trim_end_matches(['\\', '/'])
+            .to_string();
+        let normalized = if normalized.is_empty() {
+            dir.clone()
+        } else {
+            normalized
+        };
+        if !roots.iter().any(|r| r.eq_ignore_ascii_case(&normalized)) {
+            roots.push(normalized);
         }
 
         let depth = if opts.recursive {
@@ -234,6 +250,7 @@ where
         matched,
         truncated,
         errors,
+        roots,
     })
 }
 
