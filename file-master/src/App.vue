@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
+import { isMock } from '@/api'
 import TopBar from '@/components/TopBar.vue'
 import Sidebar from '@/components/Sidebar.vue'
 import RootsBar from '@/components/RootsBar.vue'
@@ -12,6 +13,8 @@ const store = useAppStore()
 onMounted(() => {
   store.initTheme()
   void store.loadJournals()
+  // 演示模式直接铺好示例数据，省掉「先点添加文件夹」这一步
+  if (isMock) void store.pickDirs()
 })
 </script>
 
