@@ -39,12 +39,12 @@ parking_lot = "0.12"
 anyhow = "1"
 thiserror = "1"
 
-# --- 元数据相关（第二阶段启用，先注释避免首次 cargo check 拉一堆依赖） ---
-# lofty = "0.21"          # 音频标签 ID3 / FLAC / MP4
-# lopdf = "0.34"          # PDF Info 字典
-# zip = "2"               # OOXML(docx/xlsx/pptx) 容器
-# quick-xml = "0.37"      # docProps/core.xml 读写
-# kamadak-exif = "0.6"    # 图片 EXIF
+# --- 元数据 / 标签编辑 ---
+lofty = "0.25"                                    # 音频标签 ID3v2 / FLAC / MP4 / OGG
+lopdf = { version = "0.46", features = ["rayon"] }  # PDF Info 字典
+zip = { version = "9", default-features = false, features = ["deflate"] }  # OOXML(docx/xlsx/pptx) 容器
+quick-xml = "0.42"                                # docProps/core.xml 读写
+little_exif = "0.6"                               # 图片 EXIF 读写（纯 Rust，JPEG/TIFF/PNG/WebP/HEIF）
 
 # Windows API 直接在 times.rs / attrs.rs 里声明 kernel32 的 extern "system"，
 # 不引入 windows / windows-sys —— 后者每次大版本都会改参数类型别名，容易编译翻车。

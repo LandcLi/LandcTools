@@ -7,6 +7,8 @@ import type {
   FileDetail,
   FileEntry,
   Journal,
+  MetaInfo,
+  MetaOptions,
   ProgressPayload,
   RenamePlan,
   RenameRules,
@@ -28,6 +30,8 @@ export const realApi = {
   listJournals: () => invoke<Journal[]>('list_journals'),
   undoJournal: (id: string) => invoke<BatchReport>('undo_journal', { id }),
   getFileDetail: (path: string) => invoke<FileDetail>('get_file_detail', { path }),
+  readMeta: (path: string) => invoke<MetaInfo>('read_meta', { path }),
+  applyMeta: (opts: MetaOptions) => invoke<BatchReport>('apply_meta', { opts }),
 }
 
 export type Api = typeof realApi

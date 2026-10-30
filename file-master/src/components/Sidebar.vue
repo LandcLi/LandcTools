@@ -26,7 +26,7 @@ const tabs: { key: PanelKey; label: string; icon: Component }[] = [
   { key: 'time', label: '时间属性', icon: Clock },
   { key: 'attr', label: '文件属性', icon: SlidersHorizontal },
   { key: 'ext', label: '后缀转换', icon: FileType2 },
-  { key: 'meta', label: '元数据', icon: Tags },
+  { key: 'meta', label: '标签编辑', icon: Tags },
   { key: 'history', label: '撤销历史', icon: History },
 ]
 </script>

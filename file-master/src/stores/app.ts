@@ -480,6 +480,30 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
+  /** 批量写标签。patch 只包含用户勾选的字段 */
+  async function applyMeta(patch: Record<string, string>, keepMtime: boolean) {
+    const targets = targetPaths()
+    const scope = targets.length ? `选中的 ${targets.length} 个文件` : '全部文件'
+    busy.value = true
+    phase.value = 'meta'
+    try {
+      const r = await api.applyMeta({ targets, patch, keepMtime })
+      notify(
+        r.failed.length ? 'err' : 'ok',
+        `已处理 ${scope}：成功 ${r.ok} 个${r.failed.length ? `，失败 ${r.failed.length} 个` : ''}`,
+      )
+      if (r.failed.length) console.warn('标签写入失败明细：', r.failed)
+      // 保留修改时间时文件时间没变，不必全量重扫（大目录会明显卡一下）
+      if (!keepMtime) await rescanQuiet()
+      await loadJournals()
+    } catch (e) {
+      notify('err', errText(e))
+    } finally {
+      busy.value = false
+      phase.value = ''
+    }
+  }
+
   /** 静默重扫（保留勾选、不弹提示） */
   async function rescanQuiet() {
     const dirs = roots.value.length
@@ -634,6 +658,7 @@ export const useAppStore = defineStore('app', () => {
     executeRename,
     applyTimes,
     applyAttrs,
+    applyMeta,
     loadJournals,
     undo,
     cancel,

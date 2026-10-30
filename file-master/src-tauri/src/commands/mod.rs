@@ -3,6 +3,7 @@
 use crate::core::attrs::{self, AttrSpec};
 use crate::core::executor::{self, ExecItem};
 use crate::core::journal::{self, Journal, JournalEntry};
+use crate::core::meta::{self, MetaInfo};
 use crate::core::rename::{self, RenamePlan, RenameRules};
 use crate::core::scan::{self, ScanOptions, ScanOutcome};
 use crate::core::times::{self, TimeSpec};
@@ -488,6 +489,102 @@ pub async fn apply_attrs(
 }
 
 // ---------------------------------------------------------------------------
+// 标签 / 元数据
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaOptions {
+    /// 目标文件路径，空数组表示「全部」
+    #[serde(default)]
+    pub targets: Vec<String>,
+    /// 只包含用户勾选的字段；值为空串表示清空该字段
+    #[serde(default)]
+    pub patch: std::collections::BTreeMap<String, String>,
+    /// 写完把修改时间还原（批量打标签不该让文件全都变成今天）
+    #[serde(default)]
+    pub keep_mtime: bool,
+}
+
+/// 读单个文件的标签。不返回 Result —— 读不出来时 `writable=false` +
+/// `reason` 说明原因，前端直接展示比弹错误更顺手。
+#[tauri::command]
+pub fn read_meta(path: String) -> MetaInfo {
+    meta::read(std::path::Path::new(&path))
+}
+
+#[tauri::command]
+pub async fn apply_meta(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    opts: MetaOptions,
+) -> AppResult<BatchReport> {
+    if opts.patch.is_empty() {
+        return Err(AppError::Invalid("还没有勾选要修改的字段".into()));
+    }
+    let targets = pick_targets(&state, &opts.targets);
+    if targets.is_empty() {
+        return Err(AppError::Invalid("没有可操作的文件".into()));
+    }
+
+    state.reset_cancel();
+    let cancel = state.cancel.clone();
+    let app2 = app.clone();
+    let started = std::time::Instant::now();
+    let total = targets.len();
+    let patch = opts.patch;
+    let keep_mtime = opts.keep_mtime;
+
+    let out = tokio::task::spawn_blocking(move || {
+        let mut ok_entries: Vec<JournalEntry> = Vec::new();
+        let mut failed: Vec<FailureItem> = Vec::new();
+        let mut cancelled = false;
+
+        for (i, f) in targets.iter().enumerate() {
+            if cancel.load(Ordering::Relaxed) {
+                cancelled = true;
+                break;
+            }
+            let path = std::path::Path::new(&f.path);
+            match meta::write(path, &patch, keep_mtime) {
+                Ok(before) => ok_entries.push(JournalEntry {
+                    after: f.path.clone(),
+                    before: serde_json::to_string(&before).unwrap_or_default(),
+                }),
+                Err(e) => failed.push(FailureItem {
+                    path: f.path.clone(),
+                    reason: e.to_string(),
+                }),
+            }
+            emit_progress(&app2, "meta", i + 1, total, &f.path);
+        }
+        (ok_entries, failed, cancelled)
+    })
+    .await
+    .map_err(|e| AppError::Internal(format!("任务异常：{e}")))?;
+
+    let (ok_entries, failed, cancelled) = out;
+    let mut j = journal::new_journal(format!("编辑标签 {} 个文件", ok_entries.len()), "meta");
+    j.entries = ok_entries.clone();
+    let journal_id = if !j.entries.is_empty() {
+        let id = j.id.clone();
+        journal::save(&j)?;
+        journal::prune(100);
+        Some(id)
+    } else {
+        None
+    };
+
+    Ok(BatchReport {
+        ok: ok_entries.len(),
+        failed,
+        cancelled,
+        journal_id,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // 撤销
 // ---------------------------------------------------------------------------
 
@@ -546,6 +643,24 @@ pub async fn undo_journal(state: State<'_, SharedState>, id: String) -> AppResul
                     archive: Some(before.archive),
                 };
                 match attrs::write_attrs(std::path::Path::new(&e.after), &spec) {
+                    Ok(_) => ok += 1,
+                    Err(err) => failed.push(FailureItem {
+                        path: e.after.clone(),
+                        reason: err.to_string(),
+                    }),
+                }
+            }
+        }
+        "meta" => {
+            for e in j.entries.iter() {
+                let before: crate::core::meta::MetaFields =
+                    serde_json::from_str(&e.before).unwrap_or_default();
+                let patch = before.to_patch();
+                if patch.is_empty() {
+                    ok += 1;
+                    continue;
+                }
+                match meta::write(std::path::Path::new(&e.after), &patch, true) {
                     Ok(_) => ok += 1,
                     Err(err) => failed.push(FailureItem {
                         path: e.after.clone(),

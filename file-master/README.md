@@ -13,7 +13,7 @@ Windows 上的批量文件处理工具。海量文件一键统一更名、批量
 | 时间属性 | 创建时间 / 修改时间 / 访问时间，支持「设为指定时间」与「按原值加减偏移」 | ✅ v0.1 |
 | 文件属性 | 只读 / 隐藏 / 系统 / 存档，四属性独立三态控制 | ✅ v0.1 |
 | 撤销历史 | 每次批量操作自动记录，任意一条可整体回滚 | ✅ v0.1 |
-| 元数据编辑 | Office 属性、PDF 属性、音乐标签、图片 EXIF 写入 | 🚧 下个版本 |
+| 标签编辑 | Office 属性（docx/xlsx/pptx）、PDF Info、音乐标签（MP3/FLAC/M4A/WAV/OGG）、图片 EXIF（JPG/PNG/TIFF/WebP/HEIC），支持批量与撤销 | ✅ v0.2 |
 
 ## 技术栈
 
@@ -137,7 +137,7 @@ Tauri 会在创建窗口阶段失败，表现为**双击毫无反应**——这�
 
 ## 路线图
 
-- [ ] 元数据编辑：docx/xlsx/pptx（OPC `docProps/core.xml`）、PDF Info 字典、音频标签（ID3/FLAC/MP4）、图片 EXIF
+- [x] 标签编辑：docx/xlsx/pptx（OPC `docProps/core.xml`）、PDF Info 字典、音频标签（ID3/FLAC/MP4）、图片 EXIF
 - [ ] 按文件名解析日期并写入时间属性
 - [ ] 改名规则方案保存与复用
 - [ ] 拖拽文件/文件夹到窗口即载入

@@ -181,6 +181,73 @@ export interface ProgressPayload {
   current: string
 }
 
+// ---------- 标签 / 元数据 ----------
+
+export type MetaFormat = 'office' | 'pdf' | 'audio' | 'image' | 'none'
+
+/**
+ * 归一化标签字段。
+ * `null` 表示该格式**不提供**这个字段（界面不显示该输入框），
+ * `''` 表示有这个字段但当前为空——两者语义完全不同，不要混用。
+ */
+export interface MetaFields {
+  title: string | null
+  artist: string | null
+  album: string | null
+  subject: string | null
+  keywords: string | null
+  comment: string | null
+  genre: string | null
+  year: number | null
+  software: string | null
+  copyright: string | null
+}
+
+export type MetaFieldKey = keyof MetaFields
+
+export interface MetaInfo {
+  path: string
+  format: MetaFormat
+  formatLabel: string
+  writable: boolean
+  reason: string | null
+  fields: MetaFields
+}
+
+export interface MetaOptions {
+  targets: string[]
+  /** 只放用户勾选的字段；空串表示清空该字段 */
+  patch: Record<string, string>
+  /** 写完还原修改时间 */
+  keepMtime: boolean
+}
+
+/**
+ * 各格式支持的字段。
+ * ⚠️ 必须与 Rust 端 `core/meta/mod.rs` 的 `MetaFields::supported` 保持一致，
+ * 改动时两边一起改。这里重复一份是为了在「勾选了多个不同格式的文件」时
+ * 能算出字段并集，而不必为每个文件各跑一次 IPC。
+ */
+export const FORMAT_FIELDS: Record<MetaFormat, MetaFieldKey[]> = {
+  office: ['title', 'artist', 'subject', 'keywords', 'comment'],
+  pdf: ['title', 'artist', 'subject', 'keywords', 'software'],
+  audio: ['title', 'artist', 'album', 'genre', 'year', 'comment'],
+  image: ['comment', 'artist', 'copyright', 'software'],
+  none: [],
+}
+
+/** 扩展名 → 格式（与 Rust `MetaFormat::of_ext` 对齐） */
+export function metaFormatOfExt(ext: string): MetaFormat {
+  const e = ext.toLowerCase()
+  if (['docx', 'xlsx', 'pptx', 'docm', 'xlsm', 'pptm'].includes(e)) return 'office'
+  if (e === 'pdf') return 'pdf'
+  if (['mp3', 'flac', 'm4a', 'ogg', 'oga', 'opus', 'wav', 'wma', 'aac', 'aiff', 'ape', 'wv'].includes(e))
+    return 'audio'
+  if (['jpg', 'jpeg', 'png', 'tif', 'tiff', 'webp', 'heic', 'heif', 'avif', 'jxl'].includes(e))
+    return 'image'
+  return 'none'
+}
+
 /** 新建一个空规则（默认值必须与 Rust 的 Default 对齐） */
 export function emptyRules(): RenameRules {
   return {

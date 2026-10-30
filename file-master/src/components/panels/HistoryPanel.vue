@@ -11,6 +11,7 @@ const kindLabel: Record<string, string> = {
   rename: '改名',
   times: '时间',
   attrs: '属性',
+  meta: '标签',
   ext: '后缀',
 }
 

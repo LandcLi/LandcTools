@@ -18,6 +18,9 @@ pub enum AppError {
     Denied(String),
 
     #[error("{0}")]
+    Unsupported(String),
+
+    #[error("{0}")]
     Internal(String),
 }
 

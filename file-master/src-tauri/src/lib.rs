@@ -35,6 +35,8 @@ pub fn run() {
             commands::list_journals,
             commands::undo_journal,
             commands::get_file_detail,
+            commands::read_meta,
+            commands::apply_meta,
         ])
         .run(tauri::generate_context!())
         .expect("启动 Landc 文件大师失败");

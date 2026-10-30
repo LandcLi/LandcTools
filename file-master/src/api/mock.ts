@@ -9,6 +9,9 @@ import type {
   FileEntry,
   FileKind,
   Journal,
+  MetaFields,
+  MetaInfo,
+  MetaOptions,
   PlanItem,
   RenamePlan,
   RenameRules,
@@ -16,6 +19,7 @@ import type {
   ScanOutcome,
   TimeSpec,
 } from './types'
+import { FORMAT_FIELDS, metaFormatOfExt } from './types'
 
 const NOW = Date.now()
 
@@ -356,5 +360,56 @@ export const mockApi = {
         archive: f?.archive ?? true,
       } as AttrSpec,
     }
+  },
+
+  async readMeta(path: string): Promise<MetaInfo> {
+    await delay(60)
+    const f = entries.find((x) => x.path === path)
+    const format = f ? metaFormatOfExt(f.ext) : 'none'
+    const supported = FORMAT_FIELDS[format]
+    const label = { office: 'Office 文档', pdf: 'PDF 文档', audio: '音频文件', image: '图片', none: '不支持' }[format]
+
+    const demo: Partial<MetaFields> = {
+      title: f ? f.stem : '',
+      artist: '',
+      album: format === 'audio' ? '示例专辑' : '',
+      subject: '',
+      keywords: '',
+      comment: '',
+      genre: format === 'audio' ? '流行' : '',
+      year: format === 'audio' ? 2024 : 0,
+      software: format === 'pdf' ? 'WPS Office' : 'Landc 文件大师',
+      copyright: '',
+    }
+
+    const fields: Record<string, unknown> = {}
+    for (const k of Object.keys(demo) as (keyof MetaFields)[]) {
+      // 不支持的字段给 null，和 Rust 端语义一致
+      fields[k] = supported.includes(k) ? (demo[k] ?? '') : null
+    }
+
+    return {
+      path,
+      format,
+      formatLabel: label,
+      writable: format !== 'none',
+      reason: format === 'none' ? `暂不支持 .${f?.ext ?? ''} 格式的标签编辑` : null,
+      fields: fields as unknown as MetaFields,
+    }
+  },
+
+  async applyMeta(opts: MetaOptions): Promise<BatchReport> {
+    await delay(560)
+    const n = opts.targets.length || entries.length
+    const j: Journal = {
+      id: `mock-j-${journals.length + 1}`,
+      title: `编辑标签 ${n} 个文件`,
+      kind: 'meta',
+      createdAt: Date.now(),
+      entries: [],
+      undone: false,
+    }
+    journals = [j, ...journals]
+    return { ok: n, failed: [], cancelled: false, journalId: j.id, elapsedMs: 560 }
   },
 }
